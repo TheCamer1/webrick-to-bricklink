@@ -186,7 +186,7 @@ def print_bricklink_inventory(excelFileName):
 
     print("<INVENTORY>")
     for item in brickLinkItems:
-        print("<ITEM><ITEMTYPE>P</ITEMTYPE><ITEMID>"+str(item.id)+"</ITEMID><COLOR>"+str(item.colour)+"</COLOR><MINQTY>"+str(item.quantity)+"</MINQTY></ITEM>")
+        print("<ITEM><ITEMTYPE>P</ITEMTYPE><ITEMID>"+str(item.id)+"</ITEMID><COLOR>"+str(item.colour)+"</COLOR><MINQTY>"+str(int(item.quantity))+"</MINQTY></ITEM>")
     print("</INVENTORY>")
 
 print_bricklink_inventory('202003298_order_items.xlsx')
