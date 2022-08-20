@@ -295,6 +295,7 @@ def get_items(excelFileName):
         columnNumber = 0
         item = Item(None, None, None)
         isNotSingleItem = False
+        itemQuantity = ""
         for cell in row:
             if (columnNumber == 0):
                 columnNumber += 1
@@ -310,8 +311,11 @@ def get_items(excelFileName):
             columnNumber += 1
             if columnNumber == 10 and cell.value != "1 piece":
                 isNotSingleItem = True
-        if (item.id == None or isNotSingleItem):
+                itemQuantity = cell.value
+        if (item.id == None):
             continue
+        if isNotSingleItem:
+            print("Item is in " + itemQuantity + " quantity: id: " + str(item.id) + ", colour: " + colourNameDictionary[str(colourDictionary[str(item.colour)])] + ", quantity: " + str(int(item.quantity)))
         items.append(item)
         rowNumber += 1
     return items
