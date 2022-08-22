@@ -322,9 +322,10 @@ def get_items(excelFileName):
 
 def map_bricklink_alternatives(result):
     if ("BrickLink" not in result["external_ids"]):
+        print('Item ' + result["part_num"] + " does not have a bricklink part ID assigned in the rebrickable database, it is assumed that the Bricklink part has the same id")
         return {
-        result["part_num"]: None
-    }
+            result["part_num"]: result["part_num"]
+        }
     return {
         result["part_num"]: result["external_ids"]["BrickLink"][0]
     }
@@ -333,19 +334,24 @@ def list_to_dictionary(list):
     return {k:v for element in list for k,v in element.items()}
 
 def query_rebrickable_api(api):
-        response = requests.get(f"{api}")
-        if response.status_code == 200:
-            responseJson = response.json()['results']
-            return list_to_dictionary(list(map(map_bricklink_alternatives, responseJson)))
-        else:
-            print(f"There's a {response.status_code} error with your request")
+    response = requests.get(f"{api}")
+    if response.status_code == 200:
+        responseJson = response.json()
+        result = list(map(map_bricklink_alternatives, responseJson['results']))
+        if responseJson['next'] is not None:
+            result = result + query_rebrickable_api(responseJson['next'])
+        return result
+    else:
+        print(f"There's a {response.status_code} error with your request")
 
 def get_bricklink_alternatives(items):
-    itemIds = ""
-    for item in items:
-        itemIds += str(item.id) + "%2C"
-    itemIds = itemIds[:-3]
-    return query_rebrickable_api(f"https://rebrickable.com/api/v3/lego/parts/?key=51544b88076aa8087e8b9536fc61bac3&part_nums={itemIds}")
+    itemIds = map(lambda x: x.id, items)
+    itemIds = list(set(itemIds))
+    itemQuery = ""
+    for id in itemIds:
+        itemQuery += str(id) + "%2C"
+    itemQuery = itemQuery[:-3]
+    return list_to_dictionary(query_rebrickable_api(f"https://rebrickable.com/api/v3/lego/parts/?key=51544b88076aa8087e8b9536fc61bac3&part_nums={itemQuery}"))
 
 def add_bricklink_items(items, brickLinkItems, nonExistentItems):
     brickLinkAlternatives = get_bricklink_alternatives(items)
@@ -364,9 +370,9 @@ def try_modified_items(brickLinkItems, nonExistentItems):
 
     add_bricklink_items(modifiedItemsToTry, brickLinkItems, modifiedNonExistentItems)
     
-    for item in modifiedItemsToTry:
+    for item in modifiedNonExistentItems:
         item.id = item.id[:-1]
-    return modifiedItemsToTry
+    return modifiedNonExistentItems
 
 def get_unique_items(brickLinkItems):
     uniqueBrickLinkItems = []
@@ -378,6 +384,42 @@ def get_unique_items(brickLinkItems):
         existingItem.quantity += item.quantity
     return uniqueBrickLinkItems
 
+def get_best_possible_id(ids):
+    for id in ids:
+        if "pr" not in id and "pb" not in id and "stk" not in id:
+            return id
+    return ids[0]
+
+def map_to_list_of_bricklink_alternatives(result):
+    if ("BrickLink" not in result["external_ids"]):
+        return result["part_num"]
+    return result["external_ids"]["BrickLink"][0]
+
+def search_rebrickable_api(api):
+    response = requests.get(f"{api}")
+    if response.status_code == 200:
+        responseJson = response.json()
+        if responseJson['count'] == 0 or "BrickLink" not in responseJson['results'][0]["external_ids"]:
+            return None
+        possibleIds = list(map(map_to_list_of_bricklink_alternatives, responseJson['results']))
+        return get_best_possible_id(possibleIds)
+    else:
+        print(f"There's a {response.status_code} error with your request")
+
+def try_searching_items(brickLinkItems, itemsForSearching):
+    searchedNonExistentItems = []
+
+    for item in itemsForSearching:
+        brickLinkId = search_rebrickable_api(f"https://rebrickable.com/api/v3/lego/parts/?key=51544b88076aa8087e8b9536fc61bac3&search={item.id}")
+        if brickLinkId == None or str(item.colour) not in colourDictionary:
+            searchedNonExistentItems.append(item)
+            continue
+        print(item.id + " did not have an exact match and the best guess was " + brickLinkId)
+        brickLinkItem = BrickLinkItem(str(brickLinkId), colourDictionary[str(item.colour)], item.quantity)
+        brickLinkItems.append(brickLinkItem)
+
+    return searchedNonExistentItems
+
 def print_bricklink_inventory(excelFileName):
     items = get_items(excelFileName)
 
@@ -385,18 +427,20 @@ def print_bricklink_inventory(excelFileName):
     brickLinkItems = []
     add_bricklink_items(items, brickLinkItems, nonExistentItems)
     nonExistentItems = try_modified_items(brickLinkItems, nonExistentItems)
+    nonExistentItems = try_searching_items(brickLinkItems, nonExistentItems)
 
     brickLinkItems = get_unique_items(brickLinkItems)
-
+    print()
     for item in nonExistentItems:
         if str(item.colour) not in colourDictionary:
             print("Cannot find color for item: id: " + str(item.id) + " colour: " + str(item.colour) + " quantity: " + str(int(item.quantity)))
             continue
         print("Cannot find item: id: " + str(item.id) + ", colour: " + colourNameDictionary[str(colourDictionary[str(item.colour)])] + ", quantity: " + str(int(item.quantity)))
 
+    print()
     print("<INVENTORY>")
     for item in brickLinkItems:
         print("<ITEM><ITEMTYPE>P</ITEMTYPE><ITEMID>"+str(item.id)+"</ITEMID><COLOR>"+str(item.colour)+"</COLOR><MINQTY>"+str(int(item.quantity))+"</MINQTY></ITEM>")
     print("</INVENTORY>")
 
-print_bricklink_inventory('202003298_order_items.xlsx')
+print_bricklink_inventory('202003298_order_items.xlsx')
